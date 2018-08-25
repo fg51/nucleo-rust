@@ -1,0 +1,6 @@
+[package]
+name = "nucle-rust"
+version = "0.1.0"
+authors = ["kflange <zknsftk1msrk@gmail.com>"]
+
+[dependencies]
