@@ -1,81 +1,101 @@
+// system clock source
+// 1- use pll hse extc (external 8 MHz clock)
+// 2- use pll hse xtal (external 8 MHz xtal) (X3 on board)
+// 3- use pll hsi (internal 16 MHz clock)
+//
+// sysclk: 84MHz
+// ahbclk: 84MHz
+// apb1clk: 42MHz
+// apb2clk: 84MHz
+
 #![deny(unsafe_code)]
-#![deny(warnings)]
-#![no_main]
+// #![deny(warnings)]
 #![no_std]
+#![no_main]
 
-#[macro_use(entry, exception)]
 extern crate cortex_m_rt as rt;
-extern crate cortex_m_semihosting as sh;
-extern crate panic_semihosting;
+extern crate panic_halt;
 
-extern crate cortex_m;
-extern crate stm32f401re_hal as hal;
+use core::fmt::Write as _core_fmt_Write;
 
-// use core::fmt::Write;
-use rt::ExceptionFrame;
-// use sh::hio;
+extern crate stm32f4xx_hal as hal;
 
-use hal::gpio::gpioa::PA5;
-use hal::gpio::GpioExt; // GPIO.split
-use hal::gpio::{Output, PushPull};
-use hal::hal::digital::OutputPin;
-use hal::rcc::RccExt; // RCC.constrain
-use hal::stm32f401::Peripherals;
+use cortex_m_semihosting::hio;
+use rt::{entry, exception, ExceptionFrame};
 
-use cortex_m::asm::delay;
+use hal::gpio::GpioExt as _gpio_GpioExt;
 
-entry!(main);
+// timer
+use hal::{
+    block,
+    hal::timer::CountDown, // enable: wait()
+    rcc::RccExt,
+    time::U32Ext, // enable: hz()
+    timer::Timer,
+};
 
+// usart
+use hal::{
+    hal::serial::Write as _hal_serial_Write,
+    serial::{config::Config, Serial},
+};
+
+mod led;
+use led::{LED, LED2};
+
+#[entry]
 fn main() -> ! {
-    let cp = cortex_m::Peripherals::take().unwrap();
-    let p = Peripherals::take().unwrap();
-    let mut syst = cp.SYST;
-    syst.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
-    syst.set_reload(8_000_000); // 1 [s] (core freq: 8 [MHz]
-    syst.enable_counter();
+    let cp = hal::stm32::CorePeripherals::take().unwrap();
+    let p = hal::stm32::Peripherals::take().unwrap();
 
-    let mut rcc = p.RCC.constrain();
-    let mut gpioa = p.GPIOA.split(&mut rcc.ahb1);
+    let rcc = p.RCC.constrain();
+    let clocks: hal::rcc::Clocks = rcc.cfgr.freeze();
+    // let clocks: hal::rcc::Clocks = rcc.cfgr.sysclk(84.mhz()).freeze();
 
-    let mut pa5: PA5<Output<PushPull>> = gpioa
-        .pa5
-        .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
-    // print().unwrap();
+    let gpioa = p.GPIOA.split();
+    let mut led2 = LED2::new(gpioa.pa5.into_push_pull_output());
 
-    pa5.set_low(); // turn off. reboot: turn on
-    delay(1_000_000);
-    pa5.set_high(); // turn off. reboot: turn on
+    let timeout = 1.hz();
+    let mut timer = Timer::syst(cp.SYST, timeout, clocks);
 
+    // usart2
+    let pin_tx = gpioa.pa2.into_alternate_af7();
+    let pin_rx = gpioa.pa3.into_alternate_af7();
+
+    let usart2 = Serial::usart2(
+        p.USART2,
+        (pin_tx, pin_rx),
+        Config::default().baudrate(115_200.bps()),
+        clocks,
+    )
+    .unwrap();
+    let (mut tx, mut _rx) = usart2.split();
+
+    led2.turn_off();
+
+    // let _rec = block!(rx.read()).unwrap();
+
+    let mut count = 0;
     loop {
-        while !syst.has_wrapped() {}
-        // delay(10_000_000);
-        pa5.set_low(); // turn off. reboot: turn on
+        block!(timer.wait()).unwrap();
+        led2.blinky();
 
-        while !syst.has_wrapped() {}
-        // delay(10_000_000);
-        pa5.set_high(); // turn off. reboot: turn on
+        count = (count + 1) & 0b0111;
+        block!(tx.write(b'0' + count)).ok();
+        write!(tx, "hello, world\r").unwrap();
+        write!(tx, "good bye\r").unwrap();
     }
 }
 
-// fn print() -> Result<(), core::fmt::Error> {
-//     let mut stdout = match hio::hstdout() {
-//         Ok(fd) => fd,
-//         Err(()) => return Err(core::fmt::Error),
-//     };
-//     let language = "Rust";
-//
-//     write!(stdout, "{} on embedded !", language)?;
-//     Ok(())
-// }
-
-exception!(HardFault, hard_fault);
-
-fn hard_fault(ef: &ExceptionFrame) -> ! {
-    panic!("HardFault at {:#?}", ef);
+#[exception]
+fn HardFault(ef: &ExceptionFrame) -> ! {
+    if let Ok(mut hstdout) = hio::hstdout() {
+        writeln!(hstdout, "{:#?}", ef).ok();
+    }
+    loop {}
 }
 
-exception!(*, default_handler);
-
-fn default_handler(irqn: i16) {
+#[exception]
+fn DefaultHandler(irqn: i16) {
     panic!("unhandled exception (IRQn={})", irqn);
 }

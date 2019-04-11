@@ -1,26 +1,7 @@
+[target.thumbv7em-none-eabihf]
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+]
+
 [build]
 target = "thumbv7em-none-eabihf"
-
-[target.thumbv7em-none-eabi]
-runner = 'arm-none-eabi-gdb'
-rustflags = [
-  "-C", "linker=arm-none-eabi-gcc",
-  "-C", "link-arg=-Wl,-Tlink.x",  # include memory.x
-  # "-C", "linker=rust-lld",
-  # "-Z", "linker-flavor=ld.lld",
-  # "-C", "link-arg=-Tlink.x",
-  # "-Z", "thinlto=no",
-]
-
-[target.thumbv7em-none-eabihf]
-runner = 'arm-none-eabi-gdb'
-rustflags = [
-  # "-C", "linker=arm-none-eabi-gcc",
-  # "-C", "link-arg=-Wl,-Tlink.x",  # include memory.x
-  # "-C", "link-arg=-nostartfiles",
-  "-C", "linker=rust-lld",
-  # "-Z", "linker-flavor=ld.lld",
-  "-C", "link-arg=-Tlink.x",
-  # "-Z", "thinlto=no",
-]
-
