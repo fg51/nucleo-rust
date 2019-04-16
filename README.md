@@ -32,3 +32,7 @@ $ arm-none-eabi-gdb ./target/thumbv7em-none-eabi/debug/nucle-rust
 
 ## output clock on MC01 pin(PA8) for debugging purpose
 HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1); 16 MHz
+
+## ADC channels
+* PA0: ADC1_IN0
+* PA1: ADC1_IN1

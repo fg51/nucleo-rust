@@ -25,13 +25,19 @@ use rt::{entry, exception, ExceptionFrame};
 
 use hal::gpio::GpioExt as _gpio_GpioExt;
 
-// timer
 use hal::{
     block,
-    // hal::timer::CountDown, // enable: wait()
     rcc::RccExt,
     time::U32Ext, // enable: hz()
-    timer::Timer,
+};
+
+// timer
+use hal::timer::Timer;
+
+// ADC
+use hal::adc::{
+    config::{AdcConfig, SampleTime},
+    Adc,
 };
 
 // usart
@@ -44,7 +50,6 @@ mod led;
 use led::{LED, LED2};
 
 use hal::timer;
-// use hal::{delay::Delay, hal::blocking::delay::DelayMs};
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
@@ -62,9 +67,6 @@ fn main() -> ! {
     let gpioa = p.GPIOA.split();
     let mut led2 = LED2::new(gpioa.pa5.into_push_pull_output());
 
-    // let mut delay = Delay::new(cp.SYST, clocks);
-    // let mut delay = Delay::new(st.clone(), clocks);
-
     let timeout = 1.hz();
     let mut syst = Timer::syst(cp.SYST, timeout, clocks);
     syst.listen(timer::Event::TimeOut);
@@ -81,58 +83,34 @@ fn main() -> ! {
     )
     .unwrap();
 
-    // usart2.listen(hal::serial::Event::Txe);
     let (mut tx, mut _rx) = usart2.split();
-    // interrupt::free(|cs| {
-    //     *PANIC_SERIAL.borrow(cs).borrow_mut() = Some(tx);
-    // });
+
+    let mut adc: hal::adc::Adc<hal::stm32::ADC1> = Adc::adc1(p.ADC1, true, AdcConfig::default());
+    let pa0 = gpioa.pa0.into_analog();
 
     led2.turn_off();
-
-    // let _rec = block!(rx.read()).unwrap();
+    block!(tx.write(b'!')).ok();
+    block!(tx.write(b'\r')).ok();
 
     let mut count = 0;
     loop {
-        // block!(timer.wait()).unwrap();
-        // let count = interrupt::free(|cs| G_COUNTER.borrow(cs).get());
-        // block!(tx.write(b'0' + count)).ok();
-        // write!(tx, "good bye\r").unwrap();
-        // interrupt::free(|cs| {
-        //     if let Some(ref mut tx) = *PANIC_SERIAL.borrow(cs).borrow_mut().deref_mut() {
-        //         block!(tx.write(b'A')).ok();
-        //     }
-        // });
-
-        //if COUNTER == 1 {
-        //    led2.blinky();
-        // delay.delay_ms(1000_u32);
         if COUNTER.load(Ordering::Relaxed) == 1 {
             COUNTER.store(0, Ordering::Relaxed);
-            count += 1;
-            block!(tx.write(b'0' + count)).ok();
-            write!(tx, "hello, world\r").unwrap();
+            count += 2;
+            if count == 2 {
+                count = 0;
+                let sample = adc.convert(&pa0, SampleTime::Cycles_480);
+                let millivolts: u16 = adc.sample_to_millivolts(sample);
+                write!(tx, "pa0: {0} [mV]\r", millivolts,).ok();
+            }
         }
-
-        // COUNTER.fetch_add(1, Ordering::Relaxed);
     }
 }
-
-// #[interrupt(args: TokenStream, input: TokenStream)]
 
 #[exception]
 fn SysTick() -> ! {
     // static mut TX_UART: Option<Tx<USART2>> = None;
     static mut EX_LED2: Option<LED2> = None;
-
-    // interrupt::free(|cs| G_COUNTER.borrow(cs).set(0));
-    // interrupt::free(|cs| {
-    //     if let Some(ref mut tx) = *PANIC_SERIAL.borrow(cs).borrow_mut().deref_mut() {
-    //         writeln!(tx, "systick\r").ok();
-    //     }
-    // })
-    // if TX_UART.is_none() {
-    //     *TX_UART =
-    // }
 
     if EX_LED2.is_none() {
         let p = hal::stm32::Peripherals::take().unwrap();

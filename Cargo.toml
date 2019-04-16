@@ -1,6 +1,6 @@
 [package]
 name = "nucleo-rust"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["kflange <zknsftk1msrk@gmail.com>"]
 edition = "2018"
 
@@ -14,14 +14,15 @@ keywords = [
 
 [dependencies]
 cortex-m-rt = "0.6.8"
-cortex-m = "0.6.0"
+cortex-m = "0.5.8"
 panic-halt = "0.2.0"
 cortex-m-semihosting = "0.3.2"
 
 
 [dependencies.stm32f4xx-hal]
-version = "0.3.0"
+#version = "0.3.0"
 features = ["stm32f401", "rt"]
+path = "./stm32f4xx-hal"
 
 [profile.dev]
 debug = true
