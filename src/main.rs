@@ -53,6 +53,9 @@ use hal::timer;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+mod dma;
+use dma::adc_start_dma;
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[entry]
@@ -100,6 +103,9 @@ fn main() -> ! {
     block!(tx.write(b'!')).ok();
     block!(tx.write(b'\r')).ok();
     adc1.start_conversion();
+
+    adc_start_dma(&mut adc1, &clocks);
+    // let buf = singleton!(: [[u16; 8]; 2] = [[0; 8]; 2]).unwrap();
 
     let mut count = 0;
     loop {

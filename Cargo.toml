@@ -1,29 +1,25 @@
 [package]
-name = "nucleo-rust"
-version = "0.3.0"
 authors = ["kflange <zknsftk1msrk@gmail.com>"]
 edition = "2018"
-
-keywords = [
-  "arm",
-  "embedded",
-  "mbed",
-  "cortex-m",
-  "stm32f401",
-]
-
+keywords = ["arm", "embedded", "mbed", "cortex-m", "stm32f401"]
+name = "nucleo-rust"
+version = "0.3.0"
 [dependencies]
-cortex-m-rt = "0.6.8"
+as-slice = "0.1"
 cortex-m = "0.5.8"
-panic-halt = "0.2.0"
+cortex-m-rt = "0.6.8"
 cortex-m-semihosting = "0.3.2"
-
+panic-halt = "0.2.0"
 
 [dependencies.stm32f4xx-hal]
-#version = "0.3.0"
 features = ["stm32f401", "rt"]
 path = "./stm32f4xx-hal"
 
+[dependencies.stable_deref_trait]
+default-features = false
+version = "1.1"
+
+[profile]
 [profile.dev]
 debug = true
 lto = true
