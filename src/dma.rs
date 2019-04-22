@@ -14,6 +14,12 @@ use hal::time::Hertz;
 // const ADC_CR2_SWSTART: u32 = 3;
 const ADC_STAB_DELAY_US: u32 = 3;
 
+const ADC_CR1_JAUTO_Pos: u32 = 10;
+const ADC_CR1_JAUTO_Msk: u32 = 0x1 << ADC_CR1_JAUTO_Pos;
+const ADC_CR1_JAUTO: u32 = ADC_CR1_JAUTO_Msk;
+
+const RESET: u32 = 0;
+
 // pub fn adc_start_dma(ADC_HandleTypeDef* hadc,  pData: usize, uint32_t Length) {
 pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks) {
     // Check the parameters
@@ -50,6 +56,11 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks) {
          * - Clear state bitfield related to regular group conversion results
          * - Set state bitfield related to regular group operation
          */
+
+        // ADC_STATE_CLR_SET(
+        //     hadc->State,
+        //     HAL_ADC_STATE_READY | HAL_ADC_STATE_REG_EOC | HAL_ADC_STATE_REG_OVR,
+        //     HAL_ADC_STATE_REG_BUSY);
         ADC_STATE_CLR_SET(
             adc.State,
             ADCState::Ready as u32 | ADCState::Reg_EOC as u32 | ADCState::Reg_OVR as u32,
@@ -58,9 +69,9 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks) {
 
         /* If conversions on group regular are also triggering group injected,
          * update ADC state.                                                         */
-        if (READ_BIT(adc.Instance.CR1, ADC_CR1_JAUTO) != RESET) {
+        if READ_BIT(adc.Instance.CR1, ADC_CR1_JAUTO) != RESET {
           ADC_STATE_CLR_SET(
-              adc.State, HAL_ADC_STATE_INJ_EOC, HAL_ADC_STATE_INJ_BUSY);
+              adc.State, ADCState::INJ_EOC, ADCState::INJ_BUSY);
         }
 
         /* State machine update: Check if an injected conversion is ongoing */
@@ -211,3 +222,55 @@ fn write_reg(reg &mut usize, val: u32) {
 fn read_reg(reg){
     return reg;
 }
+
+/*
+typedef struct __ADC_HandleTypeDef
+{
+  ADC_TypeDef                   *Instance;                   /*!< Register base address */
+
+  ADC_InitTypeDef               Init;                        /*!< ADC required parameters */
+
+  __IO uint32_t                 NbrOfCurrentConversionRank;  /*!< ADC number of current conversion rank */
+
+  DMA_HandleTypeDef             *DMA_Handle;                 /*!< Pointer DMA Handler */
+
+  HAL_LockTypeDef               Lock;                        /*!< ADC locking object */
+
+  __IO uint32_t                 State;                       /*!< ADC communication state */
+
+  __IO uint32_t                 ErrorCode;                   /*!< ADC Error code */
+#if (USE_HAL_ADC_REGISTER_CALLBACKS == 1)
+  void (* ConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);              /*!< ADC conversion complete callback */
+  void (* ConvHalfCpltCallback)(struct __ADC_HandleTypeDef *hadc);          /*!< ADC conversion DMA half-transfer callback */
+  void (* LevelOutOfWindowCallback)(struct __ADC_HandleTypeDef *hadc);      /*!< ADC analog watchdog 1 callback */
+  void (* ErrorCallback)(struct __ADC_HandleTypeDef *hadc);                 /*!< ADC error callback */
+  void (* InjectedConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);      /*!< ADC group injected conversion complete callback */
+  void (* MspInitCallback)(struct __ADC_HandleTypeDef *hadc);               /*!< ADC Msp Init callback */
+  void (* MspDeInitCallback)(struct __ADC_HandleTypeDef *hadc);             /*!< ADC Msp DeInit callback */
+#endif /* USE_HAL_ADC_REGISTER_CALLBACKS */
+}ADC_HandleTypeDef;
+*/
+
+struct ADC_HandleTypeDef {
+  ADC_TypeDef  *Instance;                   /*!< Register base address */
+
+  ADC_InitTypeDef               Init;                        /*!< ADC required parameters */
+
+  __IO uint32_t                 NbrOfCurrentConversionRank;  /*!< ADC number of current conversion rank */
+
+  DMA_HandleTypeDef             *DMA_Handle;                 /*!< Pointer DMA Handler */
+
+  HAL_LockTypeDef               Lock;                        /*!< ADC locking object */
+
+  __IO uint32_t                 State;                       /*!< ADC communication state */
+
+  __IO uint32_t                 ErrorCode;                   /*!< ADC Error code */
+// #if (USE_HAL_ADC_REGISTER_CALLBACKS == 1)
+  void (* ConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);              /*!< ADC conversion complete callback */
+  void (* ConvHalfCpltCallback)(struct __ADC_HandleTypeDef *hadc);          /*!< ADC conversion DMA half-transfer callback */
+  void (* LevelOutOfWindowCallback)(struct __ADC_HandleTypeDef *hadc);      /*!< ADC analog watchdog 1 callback */
+  void (* ErrorCallback)(struct __ADC_HandleTypeDef *hadc);                 /*!< ADC error callback */
+  void (* InjectedConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);      /*!< ADC group injected conversion complete callback */
+  void (* MspInitCallback)(struct __ADC_HandleTypeDef *hadc);               /*!< ADC Msp Init callback */
+  void (* MspDeInitCallback)(struct __ADC_HandleTypeDef *hadc);             /*!< ADC Msp DeInit callback */
+// #endif /* USE_HAL_ADC_REGISTER_CALLBACKS */
