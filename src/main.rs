@@ -36,7 +36,7 @@ use hal::timer::Timer;
 
 // ADC
 use hal::adc::{
-    config::{AdcConfig, SampleTime},
+    config::{AdcConfig, Clock, Eoc, SampleTime, Scan, Sequence},
     Adc,
 };
 
@@ -85,12 +85,21 @@ fn main() -> ! {
 
     let (mut tx, mut _rx) = usart2.split();
 
-    let mut adc: hal::adc::Adc<hal::stm32::ADC1> = Adc::adc1(p.ADC1, true, AdcConfig::default());
+    let mut adc1: hal::adc::Adc<hal::stm32::ADC1> = Adc::adc1(
+        p.ADC1,
+        true,
+        AdcConfig::default()
+            .end_of_conversion_interrupt(Eoc::Conversion)
+            .scan(Scan::Enabled)
+            .clock(Clock::Pclk2_div_8),
+    );
     let pa0 = gpioa.pa0.into_analog();
+    adc1.configure_channel(&pa0, Sequence::One, SampleTime::Cycles_480);
 
     led2.turn_off();
     block!(tx.write(b'!')).ok();
     block!(tx.write(b'\r')).ok();
+    adc1.start_conversion();
 
     let mut count = 0;
     loop {
@@ -99,8 +108,8 @@ fn main() -> ! {
             count += 2;
             if count == 2 {
                 count = 0;
-                let sample = adc.convert(&pa0, SampleTime::Cycles_480);
-                let millivolts: u16 = adc.sample_to_millivolts(sample);
+                let sample = adc1.convert(&pa0, SampleTime::Cycles_480);
+                let millivolts: u16 = adc1.sample_to_millivolts(sample);
                 write!(tx, "pa0: {0} [mV]\r", millivolts,).ok();
             }
         }
