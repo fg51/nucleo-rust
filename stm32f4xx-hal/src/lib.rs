@@ -2,7 +2,8 @@
 #![allow(non_camel_case_types)]
 
 #[cfg(not(feature = "device-selected"))]
-compile_error!("This crate requires one of the following device features enabled:
+compile_error!(
+    "This crate requires one of the following device features enabled:
         stm32f401
         stm32f405
         stm32f407
@@ -19,7 +20,8 @@ compile_error!("This crate requires one of the following device features enabled
         stm32f439
         stm32f446
         stm32f469
-        stm32f479");
+        stm32f479"
+);
 
 pub use embedded_hal as hal;
 
@@ -82,7 +84,11 @@ pub use stm32f4::stm32f469 as stm32;
 pub use crate::stm32::interrupt;
 
 #[cfg(feature = "device-selected")]
+pub mod adc;
+#[cfg(feature = "device-selected")]
 pub mod delay;
+#[cfg(feature = "device-selected")]
+pub mod dma;
 #[cfg(feature = "device-selected")]
 pub mod gpio;
 #[cfg(feature = "device-selected")]
@@ -94,6 +100,8 @@ pub mod rcc;
 #[cfg(feature = "device-selected")]
 pub mod serial;
 #[cfg(feature = "device-selected")]
+pub mod signature;
+#[cfg(feature = "device-selected")]
 pub mod spi;
 #[cfg(feature = "device-selected")]
 pub mod time;
@@ -101,7 +109,3 @@ pub mod time;
 pub mod timer;
 #[cfg(feature = "device-selected")]
 pub mod watchdog;
-#[cfg(feature = "device-selected")]
-pub mod adc;
-#[cfg(feature = "device-selected")]
-pub mod signature;

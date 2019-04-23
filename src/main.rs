@@ -99,12 +99,14 @@ fn main() -> ! {
     let pa0 = gpioa.pa0.into_analog();
     adc1.configure_channel(&pa0, Sequence::One, SampleTime::Cycles_480);
 
+    hal::dma::dma_init();
+
     led2.turn_off();
     block!(tx.write(b'!')).ok();
     block!(tx.write(b'\r')).ok();
     adc1.start_conversion();
 
-    adc_start_dma(&mut adc1, &clocks, 2);
+    // adc_start_dma(&mut adc1, &clocks, 2);
     // let buf = singleton!(: [[u16; 8]; 2] = [[0; 8]; 2]).unwrap();
 
     let mut count = 0;
