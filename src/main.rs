@@ -104,7 +104,7 @@ fn main() -> ! {
     block!(tx.write(b'\r')).ok();
     adc1.start_conversion();
 
-    adc_start_dma(&mut adc1, &clocks);
+    adc_start_dma(&mut adc1, &clocks, 2);
     // let buf = singleton!(: [[u16; 8]; 2] = [[0; 8]; 2]).unwrap();
 
     let mut count = 0;

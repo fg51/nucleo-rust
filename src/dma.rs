@@ -2,7 +2,7 @@
 
 extern crate stm32f4xx_hal as hal;
 
-use hal::adc::Adc;
+use hal::adc::{config, Adc};
 use hal::rcc::Clocks;
 // use hal::time::{Hertz, U32Ext as __hal_time_u32ext};
 use hal::time::Hertz;
@@ -14,22 +14,19 @@ use hal::time::Hertz;
 // const ADC_CR2_SWSTART: u32 = 3;
 const ADC_STAB_DELAY_US: u32 = 3;
 
-// const ADC_CR1_JAUTO_Pos: u32 = 10;
-// const ADC_CR1_JAUTO_Msk: u32 = 0x1 << ADC_CR1_JAUTO_Pos;
-// const ADC_CR1_JAUTO: u32 = ADC_CR1_JAUTO_Msk;
-
 const fn ADC_CR1_JAUTO() -> u32 {
     const ADC_CR1_JAUTO_Pos: u32 = 10;
     const ADC_CR1_JAUTO_Msk: u32 = 0x1 << ADC_CR1_JAUTO_Pos;
     return ADC_CR1_JAUTO_Msk;
 }
 
-
-
 const RESET: u32 = 0;
 
+static mut pData: [u32; 2] = [0; 2];
+
 // pub fn adc_start_dma(ADC_HandleTypeDef* hadc,  pData: usize, uint32_t Length) {
-pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks) {
+pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u32) {
+    let mut adc_state = 0;
     // Check the parameters
     // assert_param(IS_FUNCTIONAL_STATE(hadc.Init.ContinuousConvMode));
     // assert_param(IS_ADC_EXT_TRIG_EDGE(hadc.Init.ExternalTrigConvEdge));
@@ -70,25 +67,30 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks) {
         //     HAL_ADC_STATE_READY | HAL_ADC_STATE_REG_EOC | HAL_ADC_STATE_REG_OVR,
         //     HAL_ADC_STATE_REG_BUSY);
         ADC_STATE_CLR_SET(
-            adc.State,
+            adc_state,
             ADCState::Ready as u32 | ADCState::Reg_EOC as u32 | ADCState::Reg_OVR as u32,
             ADCState::Reg_Busy as u32,
         );
 
         /* If conversions on group regular are also triggering group injected,
          * update ADC state.                                                         */
-        if READ_BIT(adc.Instance.CR1, ADC_CR1_JAUTO) != RESET {
-          ADC_STATE_CLR_SET(
-              adc.State, ADCState::INJ_EOC, ADCState::INJ_BUSY);
-        }
+        //if READ_BIT(adc.Instance.CR1, ADC_CR1_JAUTO()) != RESET {
+        // if (adc.adc_reg.cr1.read().bits() == ADC_CR1_JAUTO()) != RESET {
+        // ADC_STATE_CLR_SET(adc.State, ADCState::INJ_EOC, ADCState::INJ_BUSY);
+        adc_state = ADC_STATE_CLR_SET(
+            adc_state,
+            ADCState::INJ_EOC as u32,
+            ADCState::INJ_Busy as u32,
+        );
+        //}
 
         /* State machine update: Check if an injected conversion is ongoing */
         // if (HAL_IS_BIT_SET(adc.State, HAL_ADC_STATE_INJ_BUSY)) {
-        //   /* Reset ADC error code fields related to conversions on group regular */
-        //   CLEAR_BIT(adc.ErrorCode, (HAL_ADC_ERROR_OVR | HAL_ADC_ERROR_DMA));
+        //     /* Reset ADC error code fields related to conversions on group regular */
+        //     CLEAR_BIT(adc.ErrorCode, (HAL_ADC_ERROR_OVR | HAL_ADC_ERROR_DMA));
         // } else {
-        //   /* Reset ADC all error code fields */
-        //   ADC_CLEAR_ERRORCODE(adc);
+        //     /* Reset ADC all error code fields */
+        //     ADC_CLEAR_ERRORCODE(adc);
         // }
 
         // /* Process unlocked */
@@ -117,16 +119,22 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks) {
         //  * (To ensure of no unknown state from
         //  * potential previous ADC operations)
         //  */
-        // __HAL_ADC_CLEAR_FLAG(adc, ADC_FLAG_EOC | ADC_FLAG_OVR);
+        __HAL_ADC_CLEAR_FLAG(adc, ADC_FLAG_EOC | ADC_FLAG_OVR);
 
-        // // Enable ADC overrun interrupt
-        // __HAL_ADC_ENABLE_IT(adc, ADC_IT_OVR);
+        // Enable ADC overrun interrupt
+        __HAL_ADC_ENABLE_IT(adc, ADC_IT_OVR);
 
         // // Enable ADC DMA mode
         // adc.Instance.CR2 |= ADC_CR2_DMA;
+        adc.set_dma(config::Dma::Continuous);
 
         // // Start the DMA channel
-        // HAL_DMA_Start_IT(adc.DMA_Handle, (uint32_t)&adc.Instance.DR, (uint32_t)pData, Length);
+        HAL_DMA_Start_IT(
+            adc.DMA_Handle,
+            adc.data_register_address(),
+            &mut pData,
+            length,
+        );
 
         // // Check if Multimode enabled
         // if(HAL_IS_BIT_CLR(tmpADC_Common.CCR, ADC_CCR_MULTI)) {
@@ -214,22 +222,23 @@ impl From<ADCState> for u32 {
     }
 }
 
-
-fn ADC_STATE_CLR_SET(reg: &mut usize, clear_mask:u32, set_mask:u32){
-    modify_reg(reg: &mut usize, clear_mask, set_mask);
+fn ADC_STATE_CLR_SET(reg: u32, clear_mask: u32, set_mask: u32) -> u32 {
+    // modify_reg(reg: &mut u32, clear_mask, set_mask);
+    return modify_reg(reg, clear_mask, set_mask);
 }
 
-fn modify_reg(reg &mut usize, clearmask: u32, setmask: u32) {
-    write_reg(reg, (((read_reg(reg)) & (~clearmask)) | (setmask)))
+fn modify_reg(reg: u32, clearmask: u32, setmask: u32) -> u32 {
+    // write_reg(reg, (((read_reg(reg)) & (~clearmask)) | (setmask)))
+    return reg & ((!clearmask) | setmask);
 }
 
-fn write_reg(reg &mut usize, val: u32) {
-    reg = val;
-}
-
-fn read_reg(reg){
-    return reg;
-}
+// fn write_reg(reg: &mut u32, val: u32) {
+//     reg = val;
+// }
+//
+// fn read_reg(reg){
+//     return reg;
+// }
 
 /*
 typedef struct __ADC_HandleTypeDef
@@ -260,25 +269,24 @@ typedef struct __ADC_HandleTypeDef
 */
 
 struct ADC_HandleTypeDef {
-  Instance: ADC_TypeDef,  // Register base address
-  Init:  ADC_InitTypeDef,  // ADC required parameters
-  NbrOfCurrentConversionRank: u32,  // ADC number of current conversion rank
-  DMA_Handle: DMA_HandleTypeDef,  // Pointer DMA Handler
-  Lock: HAL_LockTypeDef,  // ADC locking object
-  State: u32,  // ADC communication state
-  ErrorCode: u32,  // ADC Error code
+    Instance: ADC_TypeDef,           // Register base address
+    Init: ADC_InitTypeDef,           // ADC required parameters
+    NbrOfCurrentConversionRank: u32, // ADC number of current conversion rank
+    // DMA_Handle: DMA_HandleTypeDef,   // Pointer DMA Handler
+    Lock: HAL_LockTypeDef, // ADC locking object
+    State: u32,            // ADC communication state
+    ErrorCode: u32,        // ADC Error code
 
-// #if (USE_HAL_ADC_REGISTER_CALLBACKS == 1)
-//  void (* ConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);  // ADC conversion complete callback
-//  void (* ConvHalfCpltCallback)(struct __ADC_HandleTypeDef *hadc);  // ADC conversion DMA half-transfer callback
-//  void (* LevelOutOfWindowCallback)(struct __ADC_HandleTypeDef *hadc);  // ADC analog watchdog 1 callback
-//  void (* ErrorCallback)(struct __ADC_HandleTypeDef *hadc);                 // ADC error callback
-//  void (* InjectedConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);      // ADC group injected conversion complete callback */
-//  void (* MspInitCallback)(struct __ADC_HandleTypeDef *hadc);               // ADC Msp Init callback
-//  void (* MspDeInitCallback)(struct __ADC_HandleTypeDef *hadc);             // ADC Msp DeInit callback
-// #endif /* USE_HAL_ADC_REGISTER_CALLBACKS */
+                           // #if (USE_HAL_ADC_REGISTER_CALLBACKS == 1)
+                           //  void (* ConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);  // ADC conversion complete callback
+                           //  void (* ConvHalfCpltCallback)(struct __ADC_HandleTypeDef *hadc);  // ADC conversion DMA half-transfer callback
+                           //  void (* LevelOutOfWindowCallback)(struct __ADC_HandleTypeDef *hadc);  // ADC analog watchdog 1 callback
+                           //  void (* ErrorCallback)(struct __ADC_HandleTypeDef *hadc);                 // ADC error callback
+                           //  void (* InjectedConvCpltCallback)(struct __ADC_HandleTypeDef *hadc);      // ADC group injected conversion complete callback */
+                           //  void (* MspInitCallback)(struct __ADC_HandleTypeDef *hadc);               // ADC Msp Init callback
+                           //  void (* MspDeInitCallback)(struct __ADC_HandleTypeDef *hadc);             // ADC Msp DeInit callback
+                           // #endif /* USE_HAL_ADC_REGISTER_CALLBACKS */
 }
-
 
 //typedef struct
 //{
@@ -304,45 +312,42 @@ struct ADC_HandleTypeDef {
 //  __IO uint32_t DR;     /*!< ADC regular data register,                   Address offset: 0x4C */
 //} ADC_TypeDef;
 
-
 struct ADC_TypeDef {
-    SR: u32,     // ADC status register,                          Address offset: 0x00
-    CR1: u32,    //  ADC control register 1,                      Address offset: 0x04
-    CR2: u32,    //  ADC control register 2,                      Address offset: 0x08
-    SMPR1: u32,  //  ADC sample time register 1,                  Address offset: 0x0C
-    SMPR2: u32,  //  ADC sample time register 2,                  Address offset: 0x10
-    JOFR1: u32,  //  ADC injected channel data offset register 1, Address offset: 0x14
-    JOFR2: u32,  //  ADC injected channel data offset register 2, Address offset: 0x18
-    JOFR3: u32,  //  ADC injected channel data offset register 3, Address offset: 0x1C
-    JOFR4: u32,  //  ADC injected channel data offset register 4, Address offset: 0x20
-    HTR: u32,    //  ADC watchdog higher threshold register,      Address offset: 0x24
-    LTR: u32,    //  ADC watchdog lower threshold register,       Address offset: 0x28
-    SQR1: u32,   //  ADC regular sequence register 1,             Address offset: 0x2C
-    SQR2: u32,   //  ADC regular sequence register 2,             Address offset: 0x30
-    SQR3: u32,   //  ADC regular sequence register 3,             Address offset: 0x34
-    JSQR: u32,   //  ADC injected sequence register,              Address offset: 0x38
-    JDR1: u32,   //  ADC injected data register 1,                Address offset: 0x3C
-    JDR2: u32,   //  ADC injected data register 2,                Address offset: 0x40
-    JDR3: u32,   //  ADC injected data register 3,                Address offset: 0x44
-    JDR4: u32,   //  ADC injected data register 4,                Address offset: 0x48
-    DR: u32,     //  ADC regular data register,                   Address offset: 0x4C
+    SR: u32,    // ADC status register,                          Address offset: 0x00
+    CR1: u32,   //  ADC control register 1,                      Address offset: 0x04
+    CR2: u32,   //  ADC control register 2,                      Address offset: 0x08
+    SMPR1: u32, //  ADC sample time register 1,                  Address offset: 0x0C
+    SMPR2: u32, //  ADC sample time register 2,                  Address offset: 0x10
+    JOFR1: u32, //  ADC injected channel data offset register 1, Address offset: 0x14
+    JOFR2: u32, //  ADC injected channel data offset register 2, Address offset: 0x18
+    JOFR3: u32, //  ADC injected channel data offset register 3, Address offset: 0x1C
+    JOFR4: u32, //  ADC injected channel data offset register 4, Address offset: 0x20
+    HTR: u32,   //  ADC watchdog higher threshold register,      Address offset: 0x24
+    LTR: u32,   //  ADC watchdog lower threshold register,       Address offset: 0x28
+    SQR1: u32,  //  ADC regular sequence register 1,             Address offset: 0x2C
+    SQR2: u32,  //  ADC regular sequence register 2,             Address offset: 0x30
+    SQR3: u32,  //  ADC regular sequence register 3,             Address offset: 0x34
+    JSQR: u32,  //  ADC injected sequence register,              Address offset: 0x38
+    JDR1: u32,  //  ADC injected data register 1,                Address offset: 0x3C
+    JDR2: u32,  //  ADC injected data register 2,                Address offset: 0x40
+    JDR3: u32,  //  ADC injected data register 3,                Address offset: 0x44
+    JDR4: u32,  //  ADC injected data register 4,                Address offset: 0x48
+    DR: u32,    //  ADC regular data register,                   Address offset: 0x4C
 }
 
-
-
 /**
-  * @brief  Structure definition of ADC and regular group initialization
-  * @note   Parameters of this structure are shared within 2 scopes:
-  *          - Scope entire ADC (affects regular and injected groups): ClockPrescaler, Resolution, ScanConvMode, DataAlign, ScanConvMode, EOCSelection, LowPowerAutoWait, LowPowerAutoPowerOff, ChannelsBank.
-  *          - Scope regular group: ContinuousConvMode, NbrOfConversion, DiscontinuousConvMode, NbrOfDiscConversion, ExternalTrigConvEdge, ExternalTrigConv.
-  * @note   The setting of these parameters with function HAL_ADC_Init() is conditioned to ADC state.
-  *         ADC state can be either:
-  *          - For all parameters: ADC disabled
-  *          - For all parameters except 'Resolution', 'ScanConvMode', 'DiscontinuousConvMode', 'NbrOfDiscConversion' : ADC enabled without conversion on going on regular group.
-  *          - For parameters 'ExternalTrigConv' and 'ExternalTrigConvEdge': ADC enabled, even with conversion on going.
-  *         If ADC is not in the appropriate state to modify some parameters, these parameters setting is bypassed
-  *         without error reporting (as it can be the expected behaviour in case of intended action to update another parameter (which fulfills the ADC state condition) on the fly).
-  */
+ * @brief  Structure definition of ADC and regular group initialization
+ * @note   Parameters of this structure are shared within 2 scopes:
+ *          - Scope entire ADC (affects regular and injected groups): ClockPrescaler, Resolution, ScanConvMode, DataAlign, ScanConvMode, EOCSelection, LowPowerAutoWait, LowPowerAutoPowerOff, ChannelsBank.
+ *          - Scope regular group: ContinuousConvMode, NbrOfConversion, DiscontinuousConvMode, NbrOfDiscConversion, ExternalTrigConvEdge, ExternalTrigConv.
+ * @note   The setting of these parameters with function HAL_ADC_Init() is conditioned to ADC state.
+ *         ADC state can be either:
+ *          - For all parameters: ADC disabled
+ *          - For all parameters except 'Resolution', 'ScanConvMode', 'DiscontinuousConvMode', 'NbrOfDiscConversion' : ADC enabled without conversion on going on regular group.
+ *          - For parameters 'ExternalTrigConv' and 'ExternalTrigConvEdge': ADC enabled, even with conversion on going.
+ *         If ADC is not in the appropriate state to modify some parameters, these parameters setting is bypassed
+ *         without error reporting (as it can be the expected behaviour in case of intended action to update another parameter (which fulfills the ADC state condition) on the fly).
+ */
 //typedef struct
 //{
 //  uint32_t ClockPrescaler;               /*!< Select ADC clock prescaler. The clock is common for
@@ -394,54 +399,117 @@ struct ADC_TypeDef {
 //											  This parameter can be set to ENABLE or DISABLE. */
 //}ADC_InitTypeDef;
 
-
 struct ADC_InitTypeDef {
-
-  uint32_t ClockPrescaler;               /*!< Select ADC clock prescaler. The clock is common for
-                                              all the ADCs.
-                                              This parameter can be a value of @ref ADC_ClockPrescaler */
-  uint32_t Resolution;                   /*!< Configures the ADC resolution.
-                                              This parameter can be a value of @ref ADC_Resolution */
-  uint32_t DataAlign;                    /*!< Specifies ADC data alignment to right (MSB on register bit 11 and LSB on register bit 0) (default setting)
-                                              or to left (if regular group: MSB on register bit 15 and LSB on register bit 4, if injected group (MSB kept as signed value due to potential negative value after offset application): MSB on register bit 14 and LSB on register bit 3).
-                                              This parameter can be a value of @ref ADC_Data_align */
-  uint32_t ScanConvMode;                 /*!< Configures the sequencer of regular and injected groups.
-                                              This parameter can be associated to parameter 'DiscontinuousConvMode' to have main sequence subdivided in successive parts.
-                                              If disabled: Conversion is performed in single mode (one channel converted, the one defined in rank 1).
-                                                           Parameters 'NbrOfConversion' and 'InjectedNbrOfConversion' are discarded (equivalent to set to 1).
-                                              If enabled:  Conversions are performed in sequence mode (multiple ranks defined by 'NbrOfConversion'/'InjectedNbrOfConversion' and each channel rank).
-                                                           Scan direction is upward: from rank1 to rank 'n'.
-                                              This parameter can be set to ENABLE or DISABLE */
-  uint32_t EOCSelection;                 /*!< Specifies what EOC (End Of Conversion) flag is used for conversion by polling and interruption: end of conversion of each rank or complete sequence.
-                                              This parameter can be a value of @ref ADC_EOCSelection.
-                                              Note: For injected group, end of conversion (flag&IT) is raised only at the end of the sequence.
-                                                    Therefore, if end of conversion is set to end of each conversion, injected group should not be used with interruption (HAL_ADCEx_InjectedStart_IT)
-                                                    or polling (HAL_ADCEx_InjectedStart and HAL_ADCEx_InjectedPollForConversion). By the way, polling is still possible since driver will use an estimated timing for end of injected conversion.
-                                              Note: If overrun feature is intended to be used, use ADC in mode 'interruption' (function HAL_ADC_Start_IT() ) with parameter EOCSelection set to end of each conversion or in mode 'transfer by DMA' (function HAL_ADC_Start_DMA()).
-                                                    If overrun feature is intended to be bypassed, use ADC in mode 'polling' or 'interruption' with parameter EOCSelection must be set to end of sequence */
-  FunctionalState ContinuousConvMode;    /*!< Specifies whether the conversion is performed in single mode (one conversion) or continuous mode for regular group,
-                                              after the selected trigger occurred (software start or external trigger).
-                                              This parameter can be set to ENABLE or DISABLE. */
-  uint32_t NbrOfConversion;              /*!< Specifies the number of ranks that will be converted within the regular group sequencer.
-                                              To use regular group sequencer and convert several ranks, parameter 'ScanConvMode' must be enabled.
-                                              This parameter must be a number between Min_Data = 1 and Max_Data = 16. */
-  FunctionalState DiscontinuousConvMode; /*!< Specifies whether the conversions sequence of regular group is performed in Complete-sequence/Discontinuous-sequence (main sequence subdivided in successive parts).
-                                              Discontinuous mode is used only if sequencer is enabled (parameter 'ScanConvMode'). If sequencer is disabled, this parameter is discarded.
-                                              Discontinuous mode can be enabled only if continuous mode is disabled. If continuous mode is enabled, this parameter setting is discarded.
-                                              This parameter can be set to ENABLE or DISABLE. */
-  uint32_t NbrOfDiscConversion;          /*!< Specifies the number of discontinuous conversions in which the  main sequence of regular group (parameter NbrOfConversion) will be subdivided.
-                                              If parameter 'DiscontinuousConvMode' is disabled, this parameter is discarded.
-                                              This parameter must be a number between Min_Data = 1 and Max_Data = 8. */
-  uint32_t ExternalTrigConv;             /*!< Selects the external event used to trigger the conversion start of regular group.
-                                              If set to ADC_SOFTWARE_START, external triggers are disabled.
-                                              If set to external trigger source, triggering is on event rising edge by default.
-                                              This parameter can be a value of @ref ADC_External_trigger_Source_Regular */
-  uint32_t ExternalTrigConvEdge;         /*!< Selects the external trigger edge of regular group.
-                                              If trigger is set to ADC_SOFTWARE_START, this parameter is discarded.
-                                              This parameter can be a value of @ref ADC_External_trigger_edge_Regular */
-  FunctionalState DMAContinuousRequests; /*!< Specifies whether the DMA requests are performed in one shot mode (DMA transfer stop when number of conversions is reached)
-											  or in Continuous mode (DMA transfer unlimited, whatever number of conversions).
-											  Note: In continuous mode, DMA must be configured in circular mode. Otherwise an overrun will be triggered when DMA buffer maximum pointer is reached.
-											  Note: This parameter must be modified when no conversion is on going on both regular and injected groups (ADC disabled, or ADC enabled without continuous mode or external trigger that could launch a conversion).
-											  This parameter can be set to ENABLE or DISABLE. */
+    ClockPrescaler: u32, /* Select ADC clock prescaler. The clock is common for
+                         all the ADCs.
+                         This parameter can be a value of @ref ADC_ClockPrescaler */
+    Resolution: u32, /* Configures the ADC resolution.
+                     This parameter can be a value of @ref ADC_Resolution */
+    DataAlign: u32, /* Specifies ADC data alignment to right (MSB on register bit 11 and LSB on register bit 0) (default setting)
+                    or to left (if regular group: MSB on register bit 15 and LSB on register bit 4, if injected group (MSB kept as signed value due to potential negative value after offset application): MSB on register bit 14 and LSB on register bit 3).
+                    This parameter can be a value of @ref ADC_Data_align */
+    ScanConvMode: u32, /* Configures the sequencer of regular and injected groups.
+                       This parameter can be associated to parameter 'DiscontinuousConvMode' to have main sequence subdivided in successive parts.
+                       If disabled: Conversion is performed in single mode (one channel converted, the one defined in rank 1).
+                                    Parameters 'NbrOfConversion' and 'InjectedNbrOfConversion' are discarded (equivalent to set to 1).
+                       If enabled:  Conversions are performed in sequence mode (multiple ranks defined by 'NbrOfConversion'/'InjectedNbrOfConversion' and each channel rank).
+                                    Scan direction is upward: from rank1 to rank 'n'.
+                       This parameter can be set to ENABLE or DISABLE */
+    EOCSelection: u32, /* Specifies what EOC (End Of Conversion) flag is used for conversion by polling and interruption: end of conversion of each rank or complete sequence.
+                       This parameter can be a value of @ref ADC_EOCSelection.
+                       Note: For injected group, end of conversion (flag&IT) is raised only at the end of the sequence.
+                             Therefore, if end of conversion is set to end of each conversion, injected group should not be used with interruption (HAL_ADCEx_InjectedStart_IT)
+                             or polling (HAL_ADCEx_InjectedStart and HAL_ADCEx_InjectedPollForConversion). By the way, polling is still possible since driver will use an estimated timing for end of injected conversion.
+                       Note: If overrun feature is intended to be used, use ADC in mode 'interruption' (function HAL_ADC_Start_IT() ) with parameter EOCSelection set to end of each conversion or in mode 'transfer by DMA' (function HAL_ADC_Start_DMA()).
+                             If overrun feature is intended to be bypassed, use ADC in mode 'polling' or 'interruption' with parameter EOCSelection must be set to end of sequence */
+    ContinuousConvMode: FunctionalState, /* Specifies whether the conversion is performed in single mode (one conversion) or continuous mode for regular group,
+                                         after the selected trigger occurred (software start or external trigger).
+                                         This parameter can be set to ENABLE or DISABLE. */
+    NbrOfConversion: u32, /* Specifies the number of ranks that will be converted within the regular group sequencer.
+                          To use regular group sequencer and convert several ranks, parameter 'ScanConvMode' must be enabled.
+                          This parameter must be a number between Min_Data = 1 and Max_Data = 16. */
+    DiscontinuousConvMode: FunctionalState, /* Specifies whether the conversions sequence of regular group is performed in Complete-sequence/Discontinuous-sequence (main sequence subdivided in successive parts).
+                                            Discontinuous mode is used only if sequencer is enabled (parameter 'ScanConvMode'). If sequencer is disabled, this parameter is discarded.
+                                            Discontinuous mode can be enabled only if continuous mode is disabled. If continuous mode is enabled, this parameter setting is discarded.
+                                            This parameter can be set to ENABLE or DISABLE. */
+    NbrOfDiscConversion: u32, /* Specifies the number of discontinuous conversions in which the  main sequence of regular group (parameter NbrOfConversion) will be subdivided.
+                              If parameter 'DiscontinuousConvMode' is disabled, this parameter is discarded.
+                              This parameter must be a number between Min_Data = 1 and Max_Data = 8. */
+    ExternalTrigConv: u32, /* Selects the external event used to trigger the conversion start of regular group.
+                           If set to ADC_SOFTWARE_START, external triggers are disabled.
+                           If set to external trigger source, triggering is on event rising edge by default.
+                           This parameter can be a value of @ref ADC_External_trigger_Source_Regular */
+    ExternalTrigConvEdge: u32, /* Selects the external trigger edge of regular group.
+                               If trigger is set to ADC_SOFTWARE_START, this parameter is discarded.
+                               This parameter can be a value of @ref ADC_External_trigger_edge_Regular */
+    DMAContinuousRequests: FunctionalState, /* Specifies whether the DMA requests are performed in one shot mode (DMA transfer stop when number of conversions is reached)
+                                            or in Continuous mode (DMA transfer unlimited, whatever number of conversions).
+                                            Note: In continuous mode, DMA must be configured in circular mode. Otherwise an overrun will be triggered when DMA buffer maximum pointer is reached.
+                                            Note: This parameter must be modified when no conversion is on going on both regular and injected groups (ADC disabled, or ADC enabled without continuous mode or external trigger that could launch a conversion).
+                                            This parameter can be set to ENABLE or DISABLE. */
 }
+
+pub enum FunctionalState {
+    DISABLE,
+    ENABLE,
+}
+
+impl From<u32> for FunctionalState {
+    fn from(f: u32) -> FunctionalState {
+        match f {
+            0x0000_0000 => FunctionalState::DISABLE,
+            0x0000_0001 => FunctionalState::ENABLE,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl From<FunctionalState> for u32 {
+    fn from(l: FunctionalState) -> u32 {
+        match l {
+            FunctionalState::DISABLE => 0x0000_0000,
+            FunctionalState::ENABLE => 0x0000_0001,
+        }
+    }
+}
+
+fn READ_BIT(reg: u32, bit: u32) -> u32 {
+    reg & bit
+}
+
+enum HAL_LockTypeDef {
+    HAL_UNLOCKED,
+    HAL_LOCKED,
+}
+
+// struct DMA_HandleTypeDef
+// {
+//   DMA_Stream_TypeDef         *Instance;                                                        /*!< Register base address                  */
+//
+//   DMA_InitTypeDef            Init;                                                             /*!< DMA communication parameters           */
+//
+//   HAL_LockTypeDef            Lock;                                                             /*!< DMA locking object                     */
+//
+//   __IO HAL_DMA_StateTypeDef  State;                                                            /*!< DMA transfer state                     */
+//
+//   void                       *Parent;                                                          /*!< Parent object state                    */
+//
+//   void                       (* XferCpltCallback)( struct __DMA_HandleTypeDef * hdma);         /*!< DMA transfer complete callback         */
+//
+//   void                       (* XferHalfCpltCallback)( struct __DMA_HandleTypeDef * hdma);     /*!< DMA Half transfer complete callback    */
+//
+//   void                       (* XferM1CpltCallback)( struct __DMA_HandleTypeDef * hdma);       /*!< DMA transfer complete Memory1 callback */
+//
+//   void                       (* XferM1HalfCpltCallback)( struct __DMA_HandleTypeDef * hdma);   /*!< DMA transfer Half complete Memory1 callback */
+//
+//   void                       (* XferErrorCallback)( struct __DMA_HandleTypeDef * hdma);        /*!< DMA transfer error callback            */
+//
+//   void                       (* XferAbortCallback)( struct __DMA_HandleTypeDef * hdma);        /*!< DMA transfer Abort callback            */
+//
+//   __IO uint32_t              ErrorCode;                                                        /*!< DMA Error code                          */
+//
+//   uint32_t                   StreamBaseAddress;                                                /*!< DMA Stream Base Address                */
+//
+//   uint32_t                   StreamIndex;                                                      /*!< DMA Stream Index                       */
+//
+// }
