@@ -27,11 +27,11 @@ static mut pData: [u32; 2] = [0; 2];
 // pub fn adc_start_dma(ADC_HandleTypeDef* hadc,  pData: usize, uint32_t Length) {
 pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u32) {
     let mut adc_state = 0;
-    // Check the parameters
+    /* Check the parameters */
     // assert_param(IS_FUNCTIONAL_STATE(hadc.Init.ContinuousConvMode));
     // assert_param(IS_ADC_EXT_TRIG_EDGE(hadc.Init.ExternalTrigConvEdge));
 
-    // Process locked
+    /* Process locked */
     // __HAL_LOCK(hadc);
 
     /* Enable the ADC peripheral
@@ -43,9 +43,9 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u
         // Enable the Peripheral
         adc.enable(); // __HAL_ADC_ENABLE(adc);
 
-        // Delay for ADC stabilization time
-        // Compute number of CPU cycles to wait for
-
+        /* Delay for ADC stabilization time
+         * Compute number of CPU cycles to wait for
+         */
         // counter = ADC_STAB_DELAY_US * (SystemCoreClock / 1000000);
         let Hertz(clk) = clocks.sysclk();
         let mut counter = ADC_STAB_DELAY_US * (clk / 1000000);
@@ -74,34 +74,36 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u
 
         /* If conversions on group regular are also triggering group injected,
          * update ADC state.                                                         */
-        //if READ_BIT(adc.Instance.CR1, ADC_CR1_JAUTO()) != RESET {
-        // if (adc.adc_reg.cr1.read().bits() == ADC_CR1_JAUTO()) != RESET {
+        // if READ_BIT(adc.Instance.CR1, ADC_CR1_JAUTO()) != RESET {
+
         // ADC_STATE_CLR_SET(adc.State, ADCState::INJ_EOC, ADCState::INJ_BUSY);
         adc_state = ADC_STATE_CLR_SET(
             adc_state,
             ADCState::INJ_EOC as u32,
             ADCState::INJ_Busy as u32,
         );
-        //}
-
-        /* State machine update: Check if an injected conversion is ongoing */
-        // if (HAL_IS_BIT_SET(adc.State, HAL_ADC_STATE_INJ_BUSY)) {
-        //     /* Reset ADC error code fields related to conversions on group regular */
-        //     CLEAR_BIT(adc.ErrorCode, (HAL_ADC_ERROR_OVR | HAL_ADC_ERROR_DMA));
-        // } else {
-        //     /* Reset ADC all error code fields */
-        //     ADC_CLEAR_ERRORCODE(adc);
         // }
 
-        // /* Process unlocked */
-        // // Unlock before starting ADC conversions: in case of potential
-        // // interruption, to let the process to ADC IRQ Handler.
+        let adc_errorcode = 0;
+        /* State machine update: Check if an injected conversion is ongoing */
+        adc_errorcode = if IS_BIT_SET(adc_state, ADCState::INJ_Busy as u32) {
+            // Reset ADC error code fields related to conversions on group regular
+            CLEAR_BIT(adc_errorcode, ADCError::OVR as u32 | ADCError::DMA as u32)
+        } else {
+            // Reset ADC all error code fields
+            ADC_CLEAR_ERRORCODE()
+        };
+
+        /* Process unlocked
+         * Unlock before starting ADC conversions: in case of potential
+         * interruption, to let the process to ADC IRQ Handler.
+         */
         // __HAL_UNLOCK(adc);
 
-        // /* Pointer to the common control register to which is belonging hadc
-        //  * (Depending on STM32F4 product, there may be up to 3 ADCs and 1 common
-        //  * control register)
-        //  */
+        /* Pointer to the common control register to which is belonging hadc
+         * (Depending on STM32F4 product, there may be up to 3 ADCs and 1 common
+         * control register)
+         */
         // let mut tmpADC_Common: ADC_Common_TypeDef = ADC_COMMON_REGISTER(adc);
 
         // /* Set the DMA transfer complete callback */
@@ -113,22 +115,25 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u
         // /* Set the DMA error callback */
         // adc.DMA_Handle.XferErrorCallback = ADC_DMAError;
 
-        // /* Manage ADC and DMA start: ADC overrun interruption, DMA start, ADC
-        //  * start (in case of SW start):
-        //  * Clear regular group conversion flag and overrun flag
-        //  * (To ensure of no unknown state from
-        //  * potential previous ADC operations)
-        //  */
-        __HAL_ADC_CLEAR_FLAG(adc, ADC_FLAG_EOC | ADC_FLAG_OVR);
+        /* Manage ADC and DMA start: ADC overrun interruption, DMA start, ADC
+         * start (in case of SW start):
+         * Clear regular group conversion flag and overrun flag
+         * (To ensure of no unknown state from
+         * potential previous ADC operations)
+         */
+        // __HAL_ADC_CLEAR_FLAG(adc, ADC_FLAG_EOC | ADC_FLAG_OVR);
+        adc.clear_end_of_conversion_flag();
+        adc.clear_overrun_flag();
 
         // Enable ADC overrun interrupt
-        __HAL_ADC_ENABLE_IT(adc, ADC_IT_OVR);
+        // __HAL_ADC_ENABLE_IT(adc, ADC_IT_OVR());
+        adc.set_overrun_interrupt();
 
         // // Enable ADC DMA mode
         // adc.Instance.CR2 |= ADC_CR2_DMA;
         adc.set_dma(config::Dma::Continuous);
 
-        // // Start the DMA channel
+        // Start the DMA channel
         HAL_DMA_Start_IT(
             adc.DMA_Handle,
             adc.data_register_address(),
@@ -513,3 +518,111 @@ enum HAL_LockTypeDef {
 //   uint32_t                   StreamIndex;                                                      /*!< DMA Stream Index                       */
 //
 // }
+
+//#define CLEAR_BIT(REG, BIT) ((REG) &= ~(BIT))
+fn CLEAR_BIT(reg: u32, bit: u32) -> u32 {
+    reg & !bit
+}
+
+//#define HAL_ADC_ERROR_OVR         0x02U   // Overrun error
+//#define HAL_ADC_ERROR_DMA         0x04U   // DMA transfer error
+pub enum ADCError {
+    OVR,
+    DMA,
+}
+
+impl From<u32> for ADCError {
+    fn from(f: u32) -> ADCError {
+        match f {
+            0x0000_0002 => ADCError::OVR,
+            0x0000_0004 => ADCError::DMA,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl From<ADCError> for u32 {
+    fn from(l: ADCError) -> u32 {
+        match l {
+            ADCError::OVR => 0x0000_0002,
+            ADCError::DMA => 0x0000_0004,
+        }
+    }
+}
+
+const fn ADC_CLEAR_ERRORCODE() -> u32 {
+    0
+}
+
+// #define HAL_IS_BIT_SET(REG, BIT)         (((REG) & (BIT)) == (BIT))
+fn IS_BIT_SET(reg: u32, bit: u32) -> bool {
+    (reg & bit) == bit
+}
+
+//#define __HAL_ADC_CLEAR_FLAG(__HANDLE__, __FLAG__) (((__HANDLE__)->Instance->SR) = ~(__FLAG__))
+// const fn ADC_CLEAR_FLAG(handle, flag) {
+//     handle.Instance.SR = !flag
+// }
+
+//#define __HAL_ADC_ENABLE_IT(__HANDLE__, __INTERRUPT__) (((__HANDLE__)->Instance->CR1) |= (__INTERRUPT__))
+
+//#define ADC_IT_OVR      ((uint32_t)ADC_CR1_OVRIE)
+const fn ADC_IT_OVR() -> u32 {
+    let ADC_CR1_OVRIE_Pos = 26;
+    let ADC_CR1_OVRIE_Msk = 0x1 << ADC_CR1_OVRIE_Pos;
+    let ADC_CR1_OVRIE = ADC_CR1_OVRIE_Msk;
+    return ADC_CR1_OVRIE;
+}
+
+
+// HAL_StatusTypeDef HAL_DMA_Start_IT(DMA_HandleTypeDef *hdma, uint32_t SrcAddress, uint32_t DstAddress, uint32_t DataLength)
+fn HAL_DMA_Start_IT(hdma: &mut DMA, SrcAddress: u32, DstAddress: u32, DataLength: u32)
+{
+  // HAL_StatusTypeDef status = HAL_OK;
+
+  /* calculate DMA base and stream number */
+  // DMA_Base_Registers *regs = (DMA_Base_Registers *)hdma->StreamBaseAddress;
+  regs: DMA_Base_Registers = hdma.StreamBaseAddress;
+
+  /* Check the parameters */
+  // assert_param(IS_DMA_BUFFER_SIZE(DataLength));
+
+  /* Process locked */
+  // __HAL_LOCK(hdma);
+
+  // if(HAL_DMA_STATE_READY == hdma->State) {
+  if HAL_DMA_STATE_READY == hdma.State {
+    /* Change DMA peripheral state */
+    // hdma->State = HAL_DMA_STATE_BUSY;
+    hdma.State = HAL_DMA_STATE_BUSY;
+
+    /* Initialize the error code */
+    // hdma->ErrorCode = HAL_DMA_ERROR_NONE;
+    hdma.ErrorCode = HAL_DMA_ERROR_NONE;
+
+    /* Configure the source, destination address and the data length */
+    DMA_SetConfig(hdma, SrcAddress, DstAddress, DataLength);
+
+    /* Clear all interrupt flags at correct offset within the register */
+    // regs->IFCR = 0x3FU << hdma->StreamIndex;
+    regs.ifcr = 0x3F << hdma.StreamIndex;
+
+    /* Enable Common interrupts*/
+    hdma.Instance.CR  |= DMA_IT_TC | DMA_IT_TE | DMA_IT_DME;
+    hdma.Instance.FCR |= DMA_IT_FE;
+
+    if(hdma->XferHalfCpltCallback != NULL) {
+      hdma->Instance->CR  |= DMA_IT_HT;
+    }
+
+    /* Enable the Peripheral */
+    __HAL_DMA_ENABLE(hdma);
+  } else {
+    /* Process unlocked */
+    // __HAL_UNLOCK(hdma);
+
+    /* Return error status */
+    status = HAL_BUSY;
+  }
+}
+

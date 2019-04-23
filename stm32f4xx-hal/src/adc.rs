@@ -848,6 +848,16 @@ macro_rules! adc {
                     self.adc_reg.sr.modify(|_, w| w.eoc().clear_bit());
                 }
 
+                /// set overrun interrupt
+                pub fn set_overrun_interrupt(&mut self) {
+                    self.adc_reg.cr1.modify(|_, w| w.ovrie().bit(true));
+                }
+
+                /// Resets overrun flag
+                pub fn clear_overrun_flag(&mut self) {
+                    self.adc_reg.sr.modify(|_, w| w.ovr().clear_bit());
+                }
+
                 /// Sets the default sample time that is used for one-shot conversions.
                 /// [configure_channel](#method.configure_channel) and [start_conversion](#method.start_conversion) can be \
                 /// used for configurations where different sampling times are required per channel.
