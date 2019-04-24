@@ -54,7 +54,7 @@ use hal::timer;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 mod dma;
-use dma::adc_start_dma;
+// use dma::adc_start_dma;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 

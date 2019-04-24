@@ -1,4 +1,7 @@
 #![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+#![allow(dead_code)]
 
 extern crate stm32f4xx_hal as hal;
 
@@ -25,7 +28,7 @@ const RESET: u32 = 0;
 static mut pData: [u32; 2] = [0; 2];
 
 // pub fn adc_start_dma(ADC_HandleTypeDef* hadc,  pData: usize, uint32_t Length) {
-pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u32) {
+pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, _length: u32) {
     let mut adc_state = 0;
     /* Check the parameters */
     // assert_param(IS_FUNCTIONAL_STATE(hadc.Init.ContinuousConvMode));
@@ -86,7 +89,7 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u
 
         let adc_errorcode = 0;
         /* State machine update: Check if an injected conversion is ongoing */
-        adc_errorcode = if IS_BIT_SET(adc_state, ADCState::INJ_Busy as u32) {
+        let _adc_errorcode = if IS_BIT_SET(adc_state, ADCState::INJ_Busy as u32) {
             // Reset ADC error code fields related to conversions on group regular
             CLEAR_BIT(adc_errorcode, ADCError::OVR as u32 | ADCError::DMA as u32)
         } else {
@@ -134,12 +137,12 @@ pub fn adc_start_dma(adc: &mut Adc<hal::stm32::ADC1>, clocks: &Clocks, length: u
         adc.set_dma(config::Dma::Continuous);
 
         // Start the DMA channel
-        HAL_DMA_Start_IT(
-            adc.DMA_Handle,
-            adc.data_register_address(),
-            &mut pData,
-            length,
-        );
+        // HAL_DMA_Start_IT(
+        //     adc.DMA_Handle,
+        //     adc.data_register_address(),
+        //     &mut pData,
+        //     length,
+        // );
 
         // // Check if Multimode enabled
         // if(HAL_IS_BIT_CLR(tmpADC_Common.CCR, ADC_CCR_MULTI)) {
@@ -574,7 +577,7 @@ const fn ADC_IT_OVR() -> u32 {
     return ADC_CR1_OVRIE;
 }
 
-
+/*
 // HAL_StatusTypeDef HAL_DMA_Start_IT(DMA_HandleTypeDef *hdma, uint32_t SrcAddress, uint32_t DstAddress, uint32_t DataLength)
 fn HAL_DMA_Start_IT(hdma: &mut DMA, SrcAddress: u32, DstAddress: u32, DataLength: u32)
 {
@@ -625,4 +628,4 @@ fn HAL_DMA_Start_IT(hdma: &mut DMA, SrcAddress: u32, DstAddress: u32, DataLength
     status = HAL_BUSY;
   }
 }
-
+*/
