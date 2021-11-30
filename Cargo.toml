@@ -16,14 +16,14 @@ keywords = [
 cortex-m = "0.7.3"
 cortex-m-rtic = { version = "0.6.0-rc.4" }
 cortex-m-semihosting = "0.3.7"
-panic-halt = "0.2.0"
-# panic-semihosting = { version = "0.5.6", features = ["exit"] }
-
+embedded-hal = "0.2"
+nb = "1"
+# panic-halt = "0.2.0"
+panic-semihosting = { version = "0.5.6", features = ["exit"] }
 
 [dependencies.stm32f4xx-hal]
 version = "0.10.1"
 features = ["stm32f401", "rt"]
-path = "./stm32f4xx-hal"
 
 [profile.dev]
 debug = true
